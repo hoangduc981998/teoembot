@@ -26,13 +26,16 @@ Teoembot là một Telegram bot thông minh chuyên về cá độ bóng đá, c
 - ✅ **SQLite database**: Lưu trữ trending_topics và user_context
 - ✅ **SQLAlchemy ORM**: Quản lý database dễ dàng và an toàn
 
-### 5. Bot Trò Chuyện Giống Người
-- ✅ **Prompt cải tiến**: Thêm rules về giữ chủ đề và tránh lan man
-- ✅ **Lịch sử mở rộng**: Tăng từ 5 lên 10 tin nhắn
-- ✅ **Context summarization**: OpenAI tóm tắt ngữ cảnh trước khi trả lời
+### 5. Bot Trò Chuyện Giống Người (V10 - Enhanced)
+- ✅ **Prompt cải tiến**: Thêm rules chi tiết về giữ chủ đề, tránh lan man, giảm teencode lặp lại
+- ✅ **Trending phrases**: Tích hợp 60+ câu hot trend từ TikTok/Facebook (memes, reactions)
+- ✅ **Lịch sử mở rộng**: Tăng từ 10 lên 15-20 tin nhắn cho context tốt hơn
+- ✅ **Context summarization nâng cao**: Tóm tắt chi tiết hơn (2-3 câu), xác định chủ đề chính
 - ✅ **Semantic understanding**: Phân tích ngữ cảnh nhóm để trả lời phù hợp
-- ✅ **Phản hồi ngắn gọn**: Giới hạn token từ 80 xuống 50
-- ✅ **Relevance check**: Kiểm tra độ liên quan của phản hồi
+- ✅ **Phản hồi ngắn gọn**: Giữ ở 3-8 từ, token limit 50
+- ✅ **Relevance check cải tiến**: Kiểm tra liên quan dựa trên history và trending topics
+- ✅ **Response variation**: Tự động thay đổi cách diễn đạt để tránh lặp lại
+- ✅ **Natural fallbacks**: Dùng trending phrases thay vì hardcoded responses
 
 ## Cài đặt
 
