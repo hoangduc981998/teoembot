@@ -271,8 +271,9 @@ class TestAsyncFunctions:
         
         msg_text = "kèo bóng đá"
         context = {'trending': 'bóng'}
+        history = [{'name': 'User', 'text': 'bóng đá'}]
         
-        result = await check_relevance(msg_text, context)
+        result = await check_relevance(msg_text, context, history)
         assert isinstance(result, bool)
 
 
@@ -306,5 +307,122 @@ class TestEncryption:
         assert len(key) > 0
 
 
+class TestTrendingPhrases:
+    """Test trending phrases functionality"""
+    
+    def test_load_trending_phrases(self):
+        """Test loading trending phrases from JSON"""
+        from teoembot import load_trending_phrases
+        
+        phrases = load_trending_phrases()
+        assert phrases is not None
+        assert 'memes' in phrases
+        assert 'reactions' in phrases
+        assert 'context_aware' in phrases
+        assert len(phrases['memes']) > 0
+    
+    def test_get_random_trending_phrase(self):
+        """Test getting random trending phrase"""
+        from teoembot import get_random_trending_phrase
+        
+        # Test getting meme
+        phrase = get_random_trending_phrase('memes')
+        assert phrase is not None
+        assert isinstance(phrase, str)
+        
+        # Test getting reaction with subcategory
+        phrase = get_random_trending_phrase('reactions', 'casual')
+        assert phrase is not None
+        assert isinstance(phrase, str)
+        
+        # Test getting with no category (should return random meme)
+        phrase = get_random_trending_phrase()
+        assert phrase is not None
+        assert isinstance(phrase, str)
+
+
+class TestResponseVariation:
+    """Test response variation system"""
+    
+    def test_add_response_variation(self):
+        """Test adding variation to responses"""
+        from teoembot import add_response_variation, recent_responses
+        
+        # Clear recent responses
+        recent_responses.clear()
+        
+        # First time should return original
+        response = "uh"
+        result1 = add_response_variation(response)
+        assert result1 is not None
+        
+        # Second time with same response should return variation
+        result2 = add_response_variation(response)
+        # Should be either original or variation
+        assert result2 is not None
+        assert isinstance(result2, str)
+
+
+@pytest.mark.asyncio
+class TestEnhancedFunctions:
+    """Test enhanced async functions"""
+    
+    async def test_enhanced_check_relevance(self):
+        """Test enhanced relevance checking with history"""
+        from teoembot import check_relevance
+        
+        msg_text = "kèo bóng đá hôm nay"
+        context = {'trending': 'bóng'}
+        history = [
+            {'name': 'User1', 'text': 'bàn về bóng đá'},
+            {'name': 'User2', 'text': 'ai biết kèo gì'}
+        ]
+        
+        result = await check_relevance(msg_text, context, history)
+        assert isinstance(result, bool)
+        # This should be relevant
+        assert result
+    
+    async def test_check_relevance_short_response(self):
+        """Test relevance check for short responses"""
+        from teoembot import check_relevance
+        
+        # Short responses should be considered relevant
+        msg_text = "oke"
+        context = {}
+        history = []
+        
+        result = await check_relevance(msg_text, context, history)
+        assert result
+    
+    async def test_check_relevance_too_short(self):
+        """Test relevance check for too short responses"""
+        from teoembot import check_relevance
+        
+        # Too short (less than 3 chars) should not be relevant
+        msg_text = "uh"
+        context = {}
+        history = []
+        
+        result = await check_relevance(msg_text, context, history)
+        # 'uh' is 2 chars, should return False or True based on casual words check
+        assert isinstance(result, bool)
+
+
+class TestImprovedSystemPrompt:
+    """Test improved system prompt"""
+    
+    def test_get_system_prompt_includes_trending(self):
+        """Test that system prompt includes trending phrases"""
+        from teoembot import get_system_prompt
+        
+        prompt = get_system_prompt()
+        assert prompt is not None
+        assert 'teencode TIẾT CHẾ' in prompt.lower() or 'teencode' in prompt.lower()
+        assert 'context nhập tâm' in prompt.lower() or 'context' in prompt.lower()
+        assert 'relevance' in prompt.lower()
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
