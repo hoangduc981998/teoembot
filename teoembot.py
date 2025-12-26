@@ -80,6 +80,8 @@ DEBUG = True  # Bật debug log
 
 # Response quality constants
 MIN_MEANINGFUL_LENGTH = 3  # Minimum character length for meaningful responses
+MAX_HISTORY_TEXT_LENGTH = 50  # Maximum length for history text in context
+RECENT_TOPICS_COUNT = 3  # Number of recent topics to consider for relevance
 
 # Rate limiters
 telegram_limiter = AsyncLimiter(max_rate=20, time_period=60)  # 20 messages per minute
@@ -370,6 +372,17 @@ def get_trending_topic(chat_id):
         logger.error(f"Error getting trending topic: {e}")
         return None
 
+def get_sample_trending_phrases(count=3):
+    """Get sample trending phrases for prompt"""
+    memes = TRENDING_PHRASES.get('memes', [])
+    if not memes:
+        fallback = get_random_trending_phrase()
+        return fallback if fallback else "cái gì vậy trời, ngon nghẻ"
+    
+    sample_count = min(count, len(memes))
+    sample_memes = random.sample(memes[:10], sample_count)
+    return ", ".join(sample_memes)
+
 # --- PROMPT AI ---
 def get_system_prompt():
     mood = calculate_mood()
@@ -383,9 +396,7 @@ def get_system_prompt():
     }
     
     # Get some trending phrases to include in prompt
-    memes = TRENDING_PHRASES.get('memes', [])
-    sample_memes = random.sample(memes[:10], min(3, len(memes))) if memes else []
-    memes_text = ", ".join(sample_memes) if sample_memes else get_random_trending_phrase() or "cái gì vậy trời, ngon nghẻ"
+    memes_text = get_sample_trending_phrases(count=3)
     
     return (
         f"Bạn là Tèo, dân chơi cá độ bóng đá thật. Mood hiện tại: {mood} ({mood_traits[mood]}). "
@@ -615,7 +626,7 @@ async def check_relevance(msg_text, context, history):
         
         # Check if message relates to recent conversation topics
         if history and len(history) >= 2:
-            recent_topics = ' '.join([h.get('text', '')[:50] for h in history[-3:]])
+            recent_topics = ' '.join([h.get('text', '')[:MAX_HISTORY_TEXT_LENGTH] for h in history[-RECENT_TOPICS_COUNT:]])
             msg_lower = msg_text.lower()
             # Extract key words from message
             msg_words = set(re.findall(r'\w+', msg_lower))
