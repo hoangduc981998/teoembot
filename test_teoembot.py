@@ -205,7 +205,11 @@ class TestMoodSystem:
         """Test mood calculation"""
         from teoembot import calculate_mood, MOODS
         
-        mood = calculate_mood()
+        result = calculate_mood()
+        # Now returns a tuple of (mood, emotion)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        mood, emotion = result
         assert mood in MOODS
 
 
@@ -421,6 +425,255 @@ class TestImprovedSystemPrompt:
         assert 'teencode TIẾT CHẾ' in prompt.lower() or 'teencode' in prompt.lower()
         assert 'context nhập tâm' in prompt.lower() or 'context' in prompt.lower()
         assert 'relevance' in prompt.lower()
+    
+    def test_get_system_prompt_with_emotion(self):
+        """Test system prompt with different emotions"""
+        from teoembot import get_system_prompt
+        
+        emotions = ['excited', 'skeptical', 'thoughtful', 'playful', 'confident', 'worried']
+        for emotion in emotions:
+            prompt = get_system_prompt(emotion)
+            assert prompt is not None
+            assert emotion in prompt.lower()
+            assert len(prompt) > 100
+
+
+class TestEmotionalContext:
+    """Test emotional context analysis"""
+    
+    def test_get_emotional_context_excited(self):
+        """Test excited emotion detection"""
+        from teoembot import get_emotional_context
+        
+        text = "thắng rồi ăn ngon quá"
+        history = []
+        emotion = get_emotional_context(text, history)
+        assert emotion == 'excited'
+    
+    def test_get_emotional_context_worried(self):
+        """Test worried emotion detection"""
+        from teoembot import get_emotional_context
+        
+        text = "thua hết rồi sập mất tiền"
+        history = []
+        emotion = get_emotional_context(text, history)
+        assert emotion == 'worried'
+    
+    def test_get_emotional_context_thoughtful(self):
+        """Test thoughtful emotion detection"""
+        from teoembot import get_emotional_context
+        
+        text = "phân tích kèo này xem sao"
+        history = []
+        emotion = get_emotional_context(text, history)
+        assert emotion == 'thoughtful'
+    
+    def test_get_emotional_context_confident(self):
+        """Test confident emotion detection"""
+        from teoembot import get_emotional_context
+        
+        text = "chắc chắn ez game này"
+        history = []
+        emotion = get_emotional_context(text, history)
+        assert emotion == 'confident'
+    
+    def test_get_emotional_context_skeptical(self):
+        """Test skeptical emotion detection"""
+        from teoembot import get_emotional_context
+        
+        text = "không chắc lắm hơi rủi ro"
+        history = []
+        emotion = get_emotional_context(text, history)
+        assert emotion == 'skeptical'
+    
+    def test_get_emotional_context_playful(self):
+        """Test playful emotion detection from history"""
+        from teoembot import get_emotional_context
+        
+        text = "vậy à"
+        history = [
+            {'name': 'User1', 'text': 'haha buồn cười vl'},
+            {'name': 'User2', 'text': 'lol kkk'}
+        ]
+        emotion = get_emotional_context(text, history)
+        assert emotion == 'playful'
+
+
+class TestFollowUpQuestions:
+    """Test follow-up question system"""
+    
+    def test_get_follow_up_question(self):
+        """Test getting follow-up questions"""
+        from teoembot import get_follow_up_question
+        
+        question = get_follow_up_question()
+        assert question is not None
+        assert isinstance(question, str)
+        assert len(question) > 0
+    
+    def test_should_ask_follow_up_question_active_conversation(self):
+        """Test follow-up question for active conversations"""
+        from teoembot import should_ask_follow_up_question
+        
+        history = [
+            {'name': 'User1', 'text': 'kèo gì hôm nay'},
+            {'name': 'User2', 'text': 'mu vs arsenal'},
+            {'name': 'User3', 'text': 'bắt kèo nào'}
+        ]
+        context = {'chat_id': -1001518116463}
+        
+        # Run multiple times to test randomness
+        results = []
+        for _ in range(20):
+            result = should_ask_follow_up_question(history, context)
+            results.append(result)
+            assert isinstance(result, bool)
+        
+        # Should have at least one True given the interesting topic
+        # (but not guaranteed due to randomness)
+    
+    def test_should_ask_follow_up_question_short_history(self):
+        """Test follow-up question with short history"""
+        from teoembot import should_ask_follow_up_question
+        
+        history = [{'name': 'User1', 'text': 'hi'}]
+        context = {'chat_id': -1001518116463}
+        
+        result = should_ask_follow_up_question(history, context)
+        # Should be False or rarely True due to short history
+        assert isinstance(result, bool)
+
+
+class TestThinkingDepth:
+    """Test thinking depth system"""
+    
+    def test_add_thinking_depth_thoughtful(self):
+        """Test adding thinking depth for thoughtful emotion"""
+        from teoembot import add_thinking_depth
+        
+        response = "mu hàng thủ yếu"
+        emotion = 'thoughtful'
+        context = {}
+        
+        # Run multiple times to test
+        results = []
+        for _ in range(10):
+            result = add_thinking_depth(response, emotion, context)
+            results.append(result)
+            assert result is not None
+            assert isinstance(result, str)
+        
+        # At least some should have thinking prefix added
+        has_prefix = any('...' in r for r in results)
+        # Note: May not always add prefix due to 30% chance
+    
+    def test_add_thinking_depth_playful(self):
+        """Test thinking depth for playful emotion (should not add often)"""
+        from teoembot import add_thinking_depth
+        
+        response = "oke vui vẻ"
+        emotion = 'playful'
+        context = {}
+        
+        result = add_thinking_depth(response, emotion, context)
+        assert result is not None
+        assert isinstance(result, str)
+
+
+class TestResponseVariationEnhanced:
+    """Test enhanced response variation with synonyms"""
+    
+    def test_add_response_variation_with_synonyms(self):
+        """Test response variation using synonyms"""
+        from teoembot import add_response_variation, recent_responses
+        
+        # Clear recent responses
+        recent_responses.clear()
+        
+        # First use of "oke"
+        response1 = "oke"
+        result1 = add_response_variation(response1)
+        assert result1 is not None
+        
+        # Second use should trigger variation
+        response2 = "oke"
+        result2 = add_response_variation(response2)
+        assert result2 is not None
+        # Should potentially be different (but not guaranteed due to randomness)
+    
+    def test_add_response_variation_tracks_responses(self):
+        """Test that responses are tracked"""
+        from teoembot import add_response_variation, recent_responses
+        
+        recent_responses.clear()
+        
+        response = "test response"
+        add_response_variation(response)
+        
+        # Should be in recent responses
+        assert len(recent_responses) > 0
+
+
+class TestTrendingPhrasesEnhanced:
+    """Test enhanced trending phrases"""
+    
+    def test_load_synonyms(self):
+        """Test loading synonyms from trending phrases"""
+        from teoembot import TRENDING_PHRASES
+        
+        assert 'synonyms' in TRENDING_PHRASES
+        synonyms = TRENDING_PHRASES['synonyms']
+        assert 'oke' in synonyms
+        assert 'vl' in synonyms
+        assert 'kkk' in synonyms
+        assert isinstance(synonyms['oke'], list)
+        assert len(synonyms['oke']) > 0
+    
+    def test_load_follow_up_questions(self):
+        """Test loading follow-up questions"""
+        from teoembot import TRENDING_PHRASES
+        
+        assert 'follow_up_questions' in TRENDING_PHRASES
+        questions = TRENDING_PHRASES['follow_up_questions']
+        assert len(questions) > 0
+        assert 'sao lại thế?' in questions
+    
+    def test_load_thinking_prefixes(self):
+        """Test loading thinking prefixes"""
+        from teoembot import TRENDING_PHRASES
+        
+        assert 'thinking_prefixes' in TRENDING_PHRASES
+        prefixes = TRENDING_PHRASES['thinking_prefixes']
+        assert len(prefixes) > 0
+        assert isinstance(prefixes[0], str)
+    
+    def test_load_emotional_responses(self):
+        """Test loading emotional responses"""
+        from teoembot import TRENDING_PHRASES
+        
+        assert 'emotional_responses' in TRENDING_PHRASES
+        emotional = TRENDING_PHRASES['emotional_responses']
+        assert 'excited' in emotional
+        assert 'skeptical' in emotional
+        assert 'thoughtful' in emotional
+        assert 'playful' in emotional
+        assert 'confident' in emotional
+        assert 'worried' in emotional
+
+
+class TestMoodSystemEnhanced:
+    """Test enhanced mood system"""
+    
+    def test_calculate_mood_returns_tuple(self):
+        """Test that calculate_mood returns mood and emotion"""
+        from teoembot import calculate_mood
+        
+        result = calculate_mood()
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        mood, emotion = result
+        assert isinstance(mood, str)
+        assert isinstance(emotion, str)
 
 
 if __name__ == '__main__':
