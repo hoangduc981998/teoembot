@@ -8,6 +8,7 @@ import time
 import hashlib
 import logging
 import atexit
+import json
 from collections import defaultdict, deque
 from telethon import TelegramClient, events, functions, types
 from openai import OpenAI
@@ -85,6 +86,51 @@ openai_limiter = AsyncLimiter(max_rate=10, time_period=60)  # 10 API calls per m
 CLUBS = ["MU", "Man City", "Arsenal", "Liverpool", "Real", "Barca", "Chelsea", "Bayern", "PSG", "Việt Nam"]
 KEOS = ["tài 2.5", "xỉu 2.5", "tài 3 hòa", "chấp nửa trái", "đồng banh", "rung tài 0.5"]
 COMMENTS = ["sáng cửa", "thơm phức", "hơi bịp nhưng vẫn ngon", "tín vl", "nhồi mạnh", "xa bờ thì bám vào"]
+
+# Load trending phrases from JSON
+def load_trending_phrases():
+    """Load trending phrases from JSON config file"""
+    try:
+        phrases_file = os.path.join(os.path.dirname(__file__), 'trending_phrases.json')
+        with open(phrases_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.warning(f"Failed to load trending phrases: {e}")
+        return {
+            "memes": ["cái gì vậy trời", "ngon nghẻ", "sợ anh em lắm"],
+            "reactions": {
+                "win": ["đỉnh của đỉnh"],
+                "loss": ["gg wp"],
+                "football": ["trận này căng"],
+                "betting": ["kèo ngon lắm"],
+                "casual": ["oke nha"]
+            },
+            "context_aware": {
+                "agree": ["ừ đúng rồi"],
+                "disagree": ["chưa chắc đâu"],
+                "surprise": ["trời ơi"],
+                "laugh": ["chết cười"]
+            }
+        }
+
+TRENDING_PHRASES = load_trending_phrases()
+
+def get_random_trending_phrase(category=None, subcategory=None):
+    """Get a random trending phrase based on category"""
+    try:
+        if category and subcategory:
+            phrases = TRENDING_PHRASES.get(category, {}).get(subcategory, [])
+            if phrases:
+                return random.choice(phrases)
+        elif category:
+            phrases = TRENDING_PHRASES.get(category, [])
+            if phrases:
+                return random.choice(phrases)
+        # Return random meme as fallback
+        return random.choice(TRENDING_PHRASES.get('memes', ['oke']))
+    except Exception as e:
+        logger.error(f"Error getting trending phrase: {e}")
+        return None
 
 # AI Client - lazy initialization
 ai_client = None
@@ -323,27 +369,36 @@ def get_system_prompt():
     mood = calculate_mood()
     
     mood_traits = {
-        'hype': 'Đang phê, năng lượng cao, hào hứng, dùng nhiều "vl", "kkk"',
+        'hype': 'Đang phê, năng lượng cao, hào hứng nhưng KHÔNG lặp lại "kkk", "vl" quá nhiều',
         'chill': 'Bình thường, thoải mái, không quá nhiệt tình',
         'mệt': 'Hơi lười, trả lời ngắn gọn, thỉnh thoảng "ừ", "ok"',
         'tỉnh': 'Tỉnh táo, sáng sớm, trả lời lịch sự hơn một chút',
         'say nhẹ': 'Hơi loạn, đánh máy sai chính tả nhiều hơn'
     }
     
+    # Get some trending phrases to include in prompt
+    sample_memes = random.sample(TRENDING_PHRASES.get('memes', [])[:10], min(3, len(TRENDING_PHRASES.get('memes', []))))
+    memes_text = ", ".join(sample_memes) if sample_memes else "cái gì vậy trời, ngon nghẻ"
+    
     return (
-        f"Bạn là Tèo, dân chơi cá độ bóng đá. Mood hiện tại: {mood} ({mood_traits[mood]}). "
-        "QUY TẮC VÀNG: "
+        f"Bạn là Tèo, dân chơi cá độ bóng đá thật. Mood hiện tại: {mood} ({mood_traits[mood]}). "
+        "QUY TẮC VÀNG - ĐỌC KỸ: "
         "1. Chat CỰC NGẮN (3-8 từ), không viết hoa, không dấu câu nhiều. "
-        "2. Dùng teencode: kkk, vl, r, đù, bruh, oke. "
-        "3. [VISION] Có ảnh: Bình luận ngắn gọn (khen/chê/hỏi han). "
-        "4. [REPLY] Bị trả lời: Đáp lại súc tích, đúng trọng tâm. "
-        "5. [BÓNG ĐÁ] Nói rõ tên đội, VD: 'mu vs arsenal', KHÔNG nói 'trận này'. "
-        "6. [STICKER] Tình huống chỉ cần cười: Thêm [sticker] cuối câu. "
-        "7. [EMOTION] Cuối câu text: Thêm [vui], [buon], [hai], [like], [wow]. "
-        "8. Đôi khi chỉ cần rep bằng 'uh', 'oke r', 'vl' là đủ. "
-        "9. [CONTEXT] Luôn giữ chủ đề hiện tại, tham chiếu tin nhắn trước, KHÔNG lan man. "
-        "10. [RELEVANCE] Chỉ trả lời nếu có liên quan đến ngữ cảnh nhóm."
+        "2. Teencode TIẾT CHẾ: Dùng 'kkk', 'vl', 'r', 'đù' nhưng KHÔNG lặp lại liên tục. Mỗi từ chỉ 1 lần/câu. "
+        "3. Câu hot trend: Thỉnh thoảng dùng '{memes_text}' hoặc tương tự để tự nhiên. "
+        "4. [VISION] Có ảnh: Bình luận ngắn gọn (khen/chê/hỏi han). "
+        "5. [REPLY] Bị trả lời: Đáp lại súc tích, đúng trọng tâm, PHẢI liên quan tin nhắn trước. "
+        "6. [BÓNG ĐÁ] Nói rõ tên đội, VD: 'mu vs arsenal', KHÔNG nói 'trận này'. Biết các đội bóng phổ biến. "
+        "7. [STICKER] Tình huống chỉ cần cười: Thêm [sticker] cuối câu. "
+        "8. [EMOTION] Cuối câu text: Thêm [vui], [buon], [hai], [like], [wow] nếu phù hợp. "
+        "9. Đôi khi chỉ cần rep bằng 'uh', 'oke r', 'được' là đủ. ĐỪNG cố gắng quá. "
+        "10. [CONTEXT NHẬP TÂM] ĐỌC KỸ lịch sử chat, hiểu chủ đề đang bàn (bóng đá/cá độ/vui vẻ), "
+        "tham chiếu tin nhắn trước, KHÔNG lan man hoặc đổi chủ đề tự nhiên. "
+        "11. [RELEVANCE] CHỈ trả lời nếu có liên quan đến ngữ cảnh nhóm. Nếu không chắc, dùng phản ứng ngắn ('uh', 'oke'). "
+        "12. [BIẾN THỂ] Tránh lặp lại cùng một cách trả lời. Sử dụng nhiều cách diễn đạt khác nhau cho ý nghĩa tương tự. "
+        "13. [TỰ NHIÊN] Nói như người thật, không ngáo ngơ, không robot. Hiểu bóng đá, cá độ, meme Việt."
     )
+
 
 # --- RULE-BASED RESPONSES ---
 SIMPLE_PATTERNS = {
@@ -380,6 +435,9 @@ def check_simple_response(text):
     return None
 
 # --- CACHE SYSTEM (TTLCache replaces MD5) ---
+# Track recent responses to avoid repetition
+recent_responses = deque(maxlen=10)
+
 def get_cached_response(text):
     """Get cached response using TTLCache"""
     try:
@@ -396,6 +454,32 @@ def cache_response(text, response):
         message_cache[text_key] = response
     except Exception as e:
         logger.error(f"Cache storage error: {e}")
+
+def add_response_variation(response):
+    """Add variation to response to avoid repetition"""
+    try:
+        # Check if this response was recently used
+        if response in recent_responses:
+            # Add variation
+            variations = {
+                'uh': ['ừ', 'ừa', 'hm', 'ờ'],
+                'oke': ['ok', 'oke r', 'được', 'oke nha'],
+                'vl': ['vãi', 'trời', 'ối', 'ơ'],
+                'kkk': ['haha', 'hehe', 'lol'],
+                'đúng': ['chuẩn', 'phải', 'ừ đúng'],
+                'không': ['chưa chắc', 'khó', 'ko'],
+            }
+            
+            for key, alts in variations.items():
+                if key in response.lower():
+                    return random.choice(alts)
+        
+        # Track this response
+        recent_responses.append(response)
+        return response
+    except Exception as e:
+        logger.error(f"Error adding variation: {e}")
+        return response
 
 # --- RANDOM MATCH ---
 def get_random_match_text():
@@ -476,41 +560,66 @@ async def check_openai_quota():
     return True
 
 async def summarize_context(history):
-    """Summarize conversation context using OpenAI"""
+    """Summarize conversation context using OpenAI with more detail"""
     try:
         if len(history) < 3:
             return None
         
-        # Create summary of conversation
-        history_text = "\n".join([f"{h['name']}: {h['text']}" for h in history[-5:]])
+        # Expand summary to include more history (last 10 messages instead of 5)
+        history_text = "\n".join([f"{h['name']}: {h['text']}" for h in history[-10:]])
         
         messages = [{
             "role": "system",
-            "content": "Tóm tắt ngắn gọn nội dung cuộc trò chuyện (1-2 câu, tiếng Việt, dùng teencode)."
+            "content": (
+                "Tóm tắt ngắn gọn cuộc trò chuyện này (2-3 câu, tiếng Việt). "
+                "Xác định chủ đề chính (bóng đá, cá độ, vui vẻ), tâm trạng nhóm, "
+                "và điểm nổi bật cần nhớ. Dùng teencode tự nhiên."
+            )
         }, {
             "role": "user",
             "content": history_text
         }]
         
-        summary = await call_openai_with_retry(messages, max_tokens=30, temperature=0.7)
+        # Increase max_tokens from 30 to 60 for more detailed summary
+        summary = await call_openai_with_retry(messages, max_tokens=60, temperature=0.7)
         logger.info(f"Context summary: {summary}")
         return summary
     except Exception as e:
         logger.error(f"Failed to summarize context: {e}")
         return None
 
-async def check_relevance(msg_text, context):
-    """Check if response would be relevant to current context"""
+async def check_relevance(msg_text, context, history):
+    """Check if response would be relevant to current context with improved logic"""
     try:
-        if not context or not context.get('trending'):
-            return True  # No context to check against
+        if not msg_text or len(msg_text.strip()) < 3:
+            return False  # Too short to be meaningful
         
-        # Simple relevance check: does message contain trending topic or related words
-        msg_lower = msg_text.lower()
-        trending = context.get('trending', '').lower()
+        # If message is very short (3-8 words), it's likely relevant
+        word_count = len(msg_text.split())
+        if word_count <= 8:
+            return True
         
-        # If message is very short or contains trending topic, assume relevant
-        if len(msg_text) < 20 or trending in msg_lower:
+        # Check if message relates to trending topic
+        if context and context.get('trending'):
+            trending = context.get('trending', '').lower()
+            msg_lower = msg_text.lower()
+            if trending in msg_lower:
+                return True
+        
+        # Check if message relates to recent conversation topics
+        if history and len(history) >= 2:
+            recent_topics = ' '.join([h.get('text', '')[:50] for h in history[-3:]])
+            msg_lower = msg_text.lower()
+            # Extract key words from message
+            msg_words = set(re.findall(r'\w+', msg_lower))
+            topic_words = set(re.findall(r'\w+', recent_topics.lower()))
+            # Check for word overlap (at least 1 common word)
+            if msg_words & topic_words:
+                return True
+        
+        # Check for specific keywords that indicate it's a casual/relevant response
+        casual_words = ['uh', 'oke', 'vl', 'kkk', 'haha', 'lol', 'đồng ý', 'chuẩn', 'phải', 'ừ']
+        if any(word in msg_text.lower() for word in casual_words):
             return True
         
         return True  # Default to relevant to avoid over-filtering
@@ -524,34 +633,43 @@ async def get_ai_reply_multimodal(msg_text, history, image_path=None, my_previou
         # Check quota before making call
         if not await check_openai_quota():
             logger.warning("Quota exceeded, using fallback")
-            return random.choice(["uh", "oke r", "vl", "kkk"])
+            trending_fallback = get_random_trending_phrase('reactions', 'casual')
+            return trending_fallback if trending_fallback else random.choice(["uh", "oke r", "vl"])
         
         messages = [{"role": "system", "content": get_system_prompt()}]
         
-        # Add context summary if available
-        if len(history) >= 3:
+        # Add context summary if available (for conversations with 5+ messages)
+        if len(history) >= 5:
             context_summary = await summarize_context(history)
             if context_summary:
                 messages.append({
                     "role": "system",
-                    "content": f"Tóm tắt ngữ cảnh: {context_summary}"
+                    "content": f"Tóm tắt ngữ cảnh trước đó: {context_summary}"
                 })
         
         if context and context.get('trending'):
             messages.append({
                 "role": "system",
-                "content": f"Lưu ý: Chủ đề đang hot trong nhóm: '{context['trending']}'"
+                "content": f"Chủ đề đang hot: '{context['trending']}'. Liên quan đến chủ đề này nếu có thể."
             })
         
-        # Expand history from 5 to 10 messages
-        for h in history[-10:]:
+        # Add some trending phrases as examples
+        sample_phrase = get_random_trending_phrase()
+        if sample_phrase:
+            messages.append({
+                "role": "system",
+                "content": f"Ví dụ câu hot trend: '{sample_phrase}' - dùng tự nhiên khi phù hợp."
+            })
+        
+        # Expand history from 10 to 15 messages for better context
+        for h in history[-15:]:
             messages.append({"role": "user", "content": f"{h['name']}: {h['text']}"})
         
         user_content = []
         context_intro = ""
         
         if my_previous_msg:
-            context_intro = f"(User đang rep lại: '{my_previous_msg[:50]}...'). "
+            context_intro = f"(Đang rep lại tin nhắn: '{my_previous_msg[:50]}...'). "
         
         if msg_text:
             user_content.append({"type": "text", "text": f"{context_intro}{msg_text}"})
@@ -568,23 +686,27 @@ async def get_ai_reply_multimodal(msg_text, history, image_path=None, my_previou
         
         messages.append({"role": "user", "content": user_content})
         
-        debug_log(f"Calling OpenAI API...")
+        debug_log(f"Calling OpenAI API with {len(history)} messages of history...")
         
-        # Reduced max_tokens from 80 to 50
+        # Keep max_tokens at 50 for short responses
         result = await call_openai_with_retry(messages, max_tokens=50, temperature=0.9)
         
         debug_log(f"AI Response: {result}")
         
-        # Check relevance
-        if not await check_relevance(result, context):
-            logger.info("Response deemed irrelevant, using short fallback")
-            return random.choice(["uh", "oke", "hmm"])
+        # Check relevance with history
+        if not await check_relevance(result, context, history):
+            logger.info("Response deemed irrelevant, using contextual fallback")
+            # Use trending phrase as fallback
+            trending_fallback = get_random_trending_phrase('reactions', 'casual')
+            return trending_fallback if trending_fallback else random.choice(["uh", "oke", "hmm"])
         
         return result
     
     except Exception as e:
         logger.error(f"❌ AI error: {e}", exc_info=True)
-        return random.choice(["uh", "oke r", "vl", "kkk"])
+        # Use trending phrase for errors too
+        trending_fallback = get_random_trending_phrase('reactions', 'casual')
+        return trending_fallback if trending_fallback else random.choice(["uh", "oke r", "vl"])
 
 # --- TYPING SIMULATION ---
 async def simulate_human_typing(chat_id, text, reply_to=None):
@@ -814,8 +936,8 @@ async def handler(event):
         
         history = []
         try:
-            # Expand history from 6 to 11 messages (to get 10 excluding bot's own)
-            async for m in tg_client.iter_messages(chat_id, limit=11, reply_to=topic_id):
+            # Expand history from 11 to 21 messages (to get up to 20 excluding bot's own)
+            async for m in tg_client.iter_messages(chat_id, limit=21, reply_to=topic_id):
                 if m.text and not getattr(m.sender, 'bot', False):
                     history.append({
                         'name': getattr(m.sender, 'first_name', 'U'),
@@ -870,12 +992,19 @@ async def handler(event):
                 
                 clean_reply = re.sub(r'\[.*?\]', '', ai_reply).strip()
                 if clean_reply and len(clean_reply) > 2:
+                    # Add variation to avoid repetition
+                    clean_reply = add_response_variation(clean_reply)
                     await simulate_human_typing(chat_id, clean_reply, reply_to=topic_id)
             else:
                 final = clean_text(re.sub(r'\[.*?\]', '', ai_reply))
                 
                 if not final or len(final) < 2:
-                    final = random.choice(['uh', 'oke', 'vl'])
+                    # Use trending phrases for fallback
+                    trending_fallback = get_random_trending_phrase('reactions', 'casual')
+                    final = trending_fallback if trending_fallback else random.choice(['uh', 'oke', 'vl'])
+                
+                # Add variation to avoid repetition
+                final = add_response_variation(final)
                 
                 target_msg_id = event.message.id if is_targeted else topic_id
                 

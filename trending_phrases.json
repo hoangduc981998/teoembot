@@ -1,0 +1,88 @@
+{
+  "memes": [
+    "cái gì vậy trời",
+    "ngon nghẻ",
+    "sợ anh em lắm",
+    "xỉu ngang xỉu dọc",
+    "tui chịu",
+    "chấm hết luôn",
+    "nhức não quá",
+    "hơi bị nhảm",
+    "chill phết",
+    "vãi ò",
+    "đỉnh của chóp",
+    "quá ổn áp",
+    "ez game",
+    "nó là vậy",
+    "hiểu chưa",
+    "phết đấy",
+    "mà thôi",
+    "ờ thì",
+    "á đù",
+    "chuẩn không cần chỉnh",
+    "muốn chết luôn"
+  ],
+  "reactions": {
+    "win": [
+      "đỉnh của đỉnh",
+      "ăn ngon quá",
+      "dễ như ăn kẹo",
+      "bay màu luôn",
+      "cháy túi rồi"
+    ],
+    "loss": [
+      "gg wp",
+      "nghỉ game thôi",
+      "cháy hết rồi",
+      "chơi gì chơi",
+      "thôi tạch"
+    ],
+    "football": [
+      "xem hay phết",
+      "trận này căng",
+      "phê quá trời",
+      "đá hay vãi",
+      "thủ môn bay màu"
+    ],
+    "betting": [
+      "all in đi",
+      "thơm phức nè",
+      "kèo ngon lắm",
+      "cẩn thận bịp",
+      "húp 1 phát"
+    ],
+    "casual": [
+      "oke nha",
+      "được rồi đó",
+      "ờ thế",
+      "hơ",
+      "ừa"
+    ]
+  },
+  "context_aware": {
+    "agree": [
+      "ừ đúng rồi",
+      "chuẩn luôn",
+      "y như vậy",
+      "đồng tình"
+    ],
+    "disagree": [
+      "chưa chắc đâu",
+      "hơi khó đấy",
+      "không chắc",
+      "chắc không"
+    ],
+    "surprise": [
+      "trời ơi",
+      "sao lại thế",
+      "không tin được",
+      "ủa vậy à"
+    ],
+    "laugh": [
+      "chết cười",
+      "buồn cười vãi",
+      "hài vl",
+      "cười quá"
+    ]
+  }
+}
