@@ -17,8 +17,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from cachetools import TTLCache
 from cryptography.fernet import Fernet
 from sqlalchemy import create_engine, Column, Integer, String, Float, JSON
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Load environment variables
 load_dotenv()
@@ -87,9 +86,26 @@ CLUBS = ["MU", "Man City", "Arsenal", "Liverpool", "Real", "Barca", "Chelsea", "
 KEOS = ["tài 2.5", "xỉu 2.5", "tài 3 hòa", "chấp nửa trái", "đồng banh", "rung tài 0.5"]
 COMMENTS = ["sáng cửa", "thơm phức", "hơi bịp nhưng vẫn ngon", "tín vl", "nhồi mạnh", "xa bờ thì bám vào"]
 
-# AI Client
-ai_client = OpenAI(api_key=OPENAI_API_KEY)
-client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+# AI Client - lazy initialization
+ai_client = None
+client = None
+
+def get_ai_client():
+    """Lazy initialization of OpenAI client"""
+    global ai_client
+    if ai_client is None:
+        if not OPENAI_API_KEY:
+            logger.warning("OpenAI API key not set, using mock client")
+            return None
+        ai_client = OpenAI(api_key=OPENAI_API_KEY)
+    return ai_client
+
+def get_telegram_client():
+    """Lazy initialization of Telegram client"""
+    global client
+    if client is None:
+        client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+    return client
 
 # --- DATABASE SETUP ---
 Base = declarative_base()
@@ -425,7 +441,10 @@ async def call_openai_with_retry(messages, max_tokens=50, temperature=0.9):
     """Call OpenAI API with retry logic"""
     async with openai_limiter:
         try:
-            response = ai_client.chat.completions.create(
+            client = get_ai_client()
+            if client is None:
+                raise Exception("OpenAI client not initialized")
+            response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages,
                 max_tokens=max_tokens,
@@ -571,13 +590,18 @@ async def get_ai_reply_multimodal(msg_text, history, image_path=None, my_previou
 async def simulate_human_typing(chat_id, text, reply_to=None):
     """Simulate human typing with rate limiting"""
     try:
+        tg_client = get_telegram_client()
+        if tg_client is None:
+            logger.warning("Telegram client not initialized")
+            return
+            
         async with telegram_limiter:
             if random.random() < 0.05:
-                async with client.action(chat_id, 'typing'):
+                async with tg_client.action(chat_id, 'typing'):
                     await asyncio.sleep(random.randint(2, 5))
                 return
             
-            async with client.action(chat_id, 'typing'):
+            async with tg_client.action(chat_id, 'typing'):
                 typing_time = len(text) * random.uniform(0.08, 0.15)
                 
                 if random.random() < 0.25 and len(text) > 8:
@@ -588,14 +612,14 @@ async def simulate_human_typing(chat_id, text, reply_to=None):
                     
                     try:
                         if reply_to:
-                            m = await client.send_message(chat_id, fake_text, reply_to=reply_to)
+                            m = await tg_client.send_message(chat_id, fake_text, reply_to=reply_to)
                         else:
-                            m = await client.send_message(chat_id, fake_text)
+                            m = await tg_client.send_message(chat_id, fake_text)
                         
                         await asyncio.sleep(random.uniform(1, 2))
                         
                         final_text = add_vietnamese_typos(text)
-                        await client.edit_message(chat_id, m.id, final_text)
+                        await tg_client.edit_message(chat_id, m.id, final_text)
                         
                     except Exception as e:
                         logger.error(f"Typing sim error: {e}")
@@ -605,9 +629,9 @@ async def simulate_human_typing(chat_id, text, reply_to=None):
                     
                     try:
                         if reply_to:
-                            await client.send_message(chat_id, final_text, reply_to=reply_to)
+                            await tg_client.send_message(chat_id, final_text, reply_to=reply_to)
                         else:
-                            await client.send_message(chat_id, final_text)
+                            await tg_client.send_message(chat_id, final_text)
                     except Exception as e:
                         logger.error(f"Send error: {e}")
     except Exception as e:
@@ -617,6 +641,10 @@ async def simulate_human_typing(chat_id, text, reply_to=None):
 async def send_smart_reaction(chat_id, msg_id, sentiment):
     """Send smart reaction with rate limiting"""
     try:
+        tg_client = get_telegram_client()
+        if tg_client is None:
+            return
+            
         async with telegram_limiter:
             reaction_map = {
                 'positive': ['❤', '🔥', '👍', '💯'],
@@ -629,7 +657,7 @@ async def send_smart_reaction(chat_id, msg_id, sentiment):
             emo = random.choice(reaction_map.get(sentiment, reaction_map['neutral']))
             
             await asyncio.sleep(random.uniform(0.5, 2))
-            await client.send_reaction(chat_id, msg_id, emo)
+            await tg_client.send_reaction(chat_id, msg_id, emo)
             debug_log(f"Sent reaction: {emo}")
     except Exception as e:
         logger.error(f"Reaction error: {e}")
@@ -650,10 +678,13 @@ def analyze_sentiment(text):
     return 'neutral'
 
 # --- MAIN HANDLER ---
-@client.on(events.NewMessage)
 async def handler(event):
     try:
-        me = await client.get_me()
+        tg_client = get_telegram_client()
+        if tg_client is None:
+            return
+            
+        me = await tg_client.get_me()
         
         debug_log(f"📩 New message from chat_id={event.chat_id}")
         
@@ -752,7 +783,7 @@ async def handler(event):
             try:
                 image_path = f"temp_img_{chat_id}_{event.message.id}.jpg"
                 temp_files.append(image_path)  # Track for cleanup
-                await client.download_media(event.message.photo, file=image_path)
+                await tg_client.download_media(event.message.photo, file=image_path)
                 debug_log(f"📥 Downloaded image: {image_path}")
                 await asyncio.sleep(random.uniform(2, 4))
             except Exception as e:
@@ -784,7 +815,7 @@ async def handler(event):
         history = []
         try:
             # Expand history from 6 to 11 messages (to get 10 excluding bot's own)
-            async for m in client.iter_messages(chat_id, limit=11, reply_to=topic_id):
+            async for m in tg_client.iter_messages(chat_id, limit=11, reply_to=topic_id):
                 if m.text and not getattr(m.sender, 'bot', False):
                     history.append({
                         'name': getattr(m.sender, 'first_name', 'U'),
@@ -830,9 +861,9 @@ async def handler(event):
                 try:
                     async with telegram_limiter:
                         if topic_id:
-                            await client.send_message(chat_id, file=types.InputMediaDice(sticker_emo), reply_to=topic_id)
+                            await tg_client.send_message(chat_id, file=types.InputMediaDice(sticker_emo), reply_to=topic_id)
                         else:
-                            await client.send_message(chat_id, file=types.InputMediaDice(sticker_emo))
+                            await tg_client.send_message(chat_id, file=types.InputMediaDice(sticker_emo))
                         debug_log(f"🎲 Sticker: {sticker_emo}")
                 except Exception as e:
                     logger.error(f"Sticker send error: {e}")
@@ -868,23 +899,36 @@ async def handler(event):
         logger.error(f"❌ Handler error: {e}", exc_info=True)
 
 # --- START BOT ---
-logger.info("=" * 50)
-logger.info("🤖 Tèo Bot V9 - ENHANCED VERSION")
-logger.info("=" * 50)
-logger.info("⚙️  DEBUG MODE: ON")
-logger.info(f"⏰ Sleep hours: {SLEEP_START_HOUR}h - {SLEEP_END_HOUR}h")
-logger.info(f"🎲 Trigger probability: {TRIGGER_PROBABILITY*100}%")
-logger.info(f"⏱️  Rate limit: {RATE_LIMIT_SECONDS}s")
-logger.info(f"🔐 Allowed chats: {ALLOWED_CHAT_IDS}")
-logger.info("=" * 50)
+def main():
+    """Main function to start the bot"""
+    logger.info("=" * 50)
+    logger.info("🤖 Tèo Bot V9 - ENHANCED VERSION")
+    logger.info("=" * 50)
+    logger.info("⚙️  DEBUG MODE: ON")
+    logger.info(f"⏰ Sleep hours: {SLEEP_START_HOUR}h - {SLEEP_END_HOUR}h")
+    logger.info(f"🎲 Trigger probability: {TRIGGER_PROBABILITY*100}%")
+    logger.info(f"⏱️  Rate limit: {RATE_LIMIT_SECONDS}s")
+    logger.info(f"🔐 Allowed chats: {ALLOWED_CHAT_IDS}")
+    logger.info("=" * 50)
+    
+    try:
+        tg_client = get_telegram_client()
+        if tg_client is None:
+            logger.error("Failed to initialize Telegram client")
+            return
+        
+        # Register the event handler
+        tg_client.add_event_handler(handler, events.NewMessage())
+        
+        tg_client.start()
+        logger.info("🟢 Bot is online!")
+        logger.info("📊 Waiting for messages...")
+        logger.info("💡 Tip: Send 'kèo gì' to test quickly")
+        tg_client.run_until_disconnected()
+    except KeyboardInterrupt:
+        logger.info("\n⏹️  Bot stopped by user")
+    except Exception as e:
+        logger.error(f"❌ Startup error: {e}", exc_info=True)
 
-try:
-    client.start()
-    logger.info("🟢 Bot is online!")
-    logger.info("📊 Waiting for messages...")
-    logger.info("💡 Tip: Send 'kèo gì' to test quickly")
-    client.run_until_disconnected()
-except KeyboardInterrupt:
-    logger.info("\n⏹️  Bot stopped by user")
-except Exception as e:
-    logger.error(f"❌ Startup error: {e}", exc_info=True)
+if __name__ == "__main__":
+    main()
