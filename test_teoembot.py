@@ -206,7 +206,6 @@ class TestMoodSystem:
         from teoembot import calculate_mood, MOODS
         
         result = calculate_mood()
-        # Now returns a tuple of (mood, emotion)
         assert isinstance(result, tuple)
         assert len(result) == 2
         mood, emotion = result

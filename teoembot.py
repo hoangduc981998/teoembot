@@ -351,8 +351,8 @@ def get_emotional_context(text, history):
         return 'worried'
     elif any(w in text_lower for w in ['kèo', 'tỷ lệ', 'phân tích', 'nghiên cứu']):
         return 'thoughtful'
-    # Check skeptical before confident (to catch "không chắc" before "chắc")
-    elif any(w in text_lower for w in ['không chắc', 'rủi ro', 'nghi ngờ']):
+    # Check skeptical phrases (including word boundaries)
+    elif re.search(r'\b(không chắc|rủi ro|nghi ngờ|chưa chắc)\b', text_lower):
         return 'skeptical'
     elif any(w in text_lower for w in ['chắc', 'ez', 'dễ', 'ăn chắc']):
         return 'confident'
@@ -827,7 +827,7 @@ async def get_ai_reply_multimodal(msg_text, history, image_path=None, my_previou
         debug_log(f"Calling OpenAI API with {len(history)} messages, emotion={emotion}...")
         
         # Increase max_tokens from 50 to 80 for deeper responses with reasoning
-        result = await call_openai_with_retry(messages, max_tokens=80, temperature=1.0)
+        result = await call_openai_with_retry(messages, max_tokens=80, temperature=0.9)
         
         debug_log(f"AI Response: {result}")
         
