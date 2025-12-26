@@ -22,6 +22,36 @@
     "chuẩn không cần chỉnh",
     "muốn chết luôn"
   ],
+  "synonyms": {
+    "oke": ["ok", "oke r", "được", "oke nha", "nhận", "rõ", "uh ok", "nghe vậy"],
+    "vl": ["vãi", "trời", "ối", "ơ", "ghê", "quá trời", "kinh"],
+    "kkk": ["haha", "hehe", "lol", "hì", "hihi"],
+    "đúng": ["chuẩn", "phải", "ừ đúng", "y chang", "đúng rồi", "chính xác"],
+    "không": ["chưa chắc", "khó", "ko", "chắc ko", "hơi khó"],
+    "uh": ["ừ", "ừa", "hm", "ờ", "à", "uhm"]
+  },
+  "follow_up_questions": [
+    "sao lại thế?",
+    "anh nghĩ sao?",
+    "thế nào?",
+    "có chắc không?",
+    "giải thích thêm đi",
+    "tại sao vậy?",
+    "ý anh là gì?",
+    "rồi sao nữa?",
+    "có bài học gì không?",
+    "chắc không?"
+  ],
+  "thinking_prefixes": [
+    "để tao nghĩ",
+    "hmmm",
+    "để xem nào",
+    "phân tích thử",
+    "theo tao thì",
+    "nhìn kỹ thì",
+    "xét cho cùng",
+    "nếu không nhầm"
+  ],
   "reactions": {
     "win": [
       "đỉnh của đỉnh",
@@ -83,6 +113,44 @@
       "buồn cười vãi",
       "hài vl",
       "cười quá"
+    ]
+  },
+  "emotional_responses": {
+    "excited": [
+      "phê quá",
+      "hào hứng vl",
+      "ngon lành",
+      "đỉnh thật"
+    ],
+    "skeptical": [
+      "không chắc lắm",
+      "nghi ngờ đấy",
+      "hơi rủi ro",
+      "cẩn thận"
+    ],
+    "thoughtful": [
+      "để nghĩ kỹ",
+      "phân tích thử",
+      "xét kỹ thì",
+      "nhìn nhận lại"
+    ],
+    "playful": [
+      "chơi thôi",
+      "vui vui",
+      "thử xem sao",
+      "chill đi"
+    ],
+    "confident": [
+      "chắc chắn",
+      "tin tưởng",
+      "ăn chắc",
+      "ez game"
+    ],
+    "worried": [
+      "lo lo",
+      "hơi sợ",
+      "bất an",
+      "không yên tâm"
     ]
   }
 }

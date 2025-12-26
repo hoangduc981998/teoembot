@@ -200,12 +200,16 @@ trending_topics = defaultdict(lambda: deque(maxlen=20))
 # Replace MD5 cache with TTLCache
 message_cache = TTLCache(maxsize=100, ttl=600)  # 100 items, 10 min TTL
 
-# Moods system
+# Moods system with emotional states
 MOODS = ['hype', 'chill', 'mệt', 'tỉnh', 'say nhẹ']
-current_mood = {'state': 'chill', 'changed_at': time.time()}
+EMOTIONAL_STATES = ['excited', 'skeptical', 'thoughtful', 'playful', 'confident', 'worried']
+current_mood = {'state': 'chill', 'changed_at': time.time(), 'emotion': 'playful'}
 
 # Track temporary files for cleanup
 temp_files = []
+
+# Topic memory for conversation continuity
+topic_memory = defaultdict(lambda: {'last_topic': None, 'timestamp': 0, 'questions_asked': 0})
 
 def cleanup_temp_files():
     """Clean up temporary files on exit"""
@@ -321,16 +325,45 @@ def calculate_mood():
         
         if 22 <= hour or hour < 1:
             current_mood['state'] = random.choice(['say nhẹ', 'mệt', 'chill'])
+            current_mood['emotion'] = random.choice(['playful', 'thoughtful'])
         elif 7 <= hour < 12:
             current_mood['state'] = random.choice(['tỉnh', 'chill', 'hype'])
+            current_mood['emotion'] = random.choice(['excited', 'confident'])
         elif 18 <= hour < 22:
             current_mood['state'] = random.choice(['hype', 'chill'])
+            current_mood['emotion'] = random.choice(['excited', 'playful', 'confident'])
         else:
             current_mood['state'] = 'chill'
+            current_mood['emotion'] = random.choice(['thoughtful', 'playful'])
         
         current_mood['changed_at'] = now
     
-    return current_mood['state']
+    return current_mood['state'], current_mood.get('emotion', 'playful')
+
+def get_emotional_context(text, history):
+    """Analyze conversation context to determine appropriate emotion"""
+    text_lower = text.lower() if text else ""
+    
+    # Check for winning/losing context
+    if any(w in text_lower for w in ['thắng', 'lãi', 'ăn', 'đỉnh', 'ngon']):
+        return 'excited'
+    elif any(w in text_lower for w in ['thua', 'sập', 'cháy', 'mất']):
+        return 'worried'
+    elif any(w in text_lower for w in ['kèo', 'tỷ lệ', 'phân tích', 'nghiên cứu']):
+        return 'thoughtful'
+    # Check skeptical phrases (including word boundaries)
+    elif re.search(r'\b(không chắc|rủi ro|nghi ngờ|chưa chắc)\b', text_lower):
+        return 'skeptical'
+    elif any(w in text_lower for w in ['chắc', 'ez', 'dễ', 'ăn chắc']):
+        return 'confident'
+    
+    # Check history sentiment
+    if history and len(history) >= 3:
+        recent_text = ' '.join([h.get('text', '')[:50].lower() for h in history[-3:]])
+        if 'haha' in recent_text or 'lol' in recent_text or 'kkk' in recent_text:
+            return 'playful'
+    
+    return 'playful'
 
 # --- TRENDING TOPICS ---
 def update_trending(chat_id, text):
@@ -386,8 +419,8 @@ def get_sample_trending_phrases(count=3):
     return ", ".join(sample_memes)
 
 # --- PROMPT AI ---
-def get_system_prompt():
-    mood = calculate_mood()
+def get_system_prompt(emotion='playful'):
+    mood, _ = calculate_mood()
     
     mood_traits = {
         'hype': 'Đang phê, năng lượng cao, hào hứng nhưng KHÔNG lặp lại "kkk", "vl" quá nhiều',
@@ -397,26 +430,44 @@ def get_system_prompt():
         'say nhẹ': 'Hơi loạn, đánh máy sai chính tả nhiều hơn'
     }
     
+    emotion_traits = {
+        'excited': 'Hào hứng, phấn khích, tích cực',
+        'skeptical': 'Nghi ngờ, thận trọng, cẩn thận',
+        'thoughtful': 'Suy nghĩ sâu, phân tích kỹ, đưa ra lý do',
+        'playful': 'Vui vẻ, thoải mái, dễ chịu',
+        'confident': 'Tự tin, chắc chắn, quyết đoán',
+        'worried': 'Lo lắng, bất an, thận trọng'
+    }
+    
     # Get some trending phrases to include in prompt
     memes_text = get_sample_trending_phrases(count=3)
     
+    # Get emotional responses for this emotion
+    emotional_responses = TRENDING_PHRASES.get('emotional_responses', {}).get(emotion, [])
+    emotion_examples = ', '.join(emotional_responses[:3]) if emotional_responses else ''
+    
     return (
-        f"Bạn là Tèo, dân chơi cá độ bóng đá thật. Mood hiện tại: {mood} ({mood_traits[mood]}). "
+        f"Bạn là Tèo, dân chơi cá độ bóng đá thật. Mood: {mood} ({mood_traits[mood]}). "
+        f"Cảm xúc hiện tại: {emotion} ({emotion_traits.get(emotion, 'bình thường')}). "
         "QUY TẮC VÀNG - ĐỌC KỸ: "
         "1. Chat CỰC NGẮN (3-8 từ), không viết hoa, không dấu câu nhiều. "
         "2. Teencode TIẾT CHẾ: Dùng 'kkk', 'vl', 'r', 'đù' nhưng KHÔNG lặp lại liên tục. Mỗi từ chỉ 1 lần/câu. "
         f"3. Câu hot trend: Thỉnh thoảng dùng '{memes_text}' hoặc tương tự để tự nhiên. "
-        "4. [VISION] Có ảnh: Bình luận ngắn gọn (khen/chê/hỏi han). "
-        "5. [REPLY] Bị trả lời: Đáp lại súc tích, đúng trọng tâm, PHẢI liên quan tin nhắn trước. "
-        "6. [BÓNG ĐÁ] Nói rõ tên đội, VD: 'mu vs arsenal', KHÔNG nói 'trận này'. Biết các đội bóng phổ biến. "
-        "7. [STICKER] Tình huống chỉ cần cười: Thêm [sticker] cuối câu. "
-        "8. [EMOTION] Cuối câu text: Thêm [vui], [buon], [hai], [like], [wow] nếu phù hợp. "
-        "9. Đôi khi chỉ cần rep bằng 'uh', 'oke r', 'được' là đủ. ĐỪNG cố gắng quá. "
-        "10. [CONTEXT NHẬP TÂM] ĐỌC KỸ lịch sử chat, hiểu chủ đề đang bàn (bóng đá/cá độ/vui vẻ), "
+        f"4. [EMOTION] Thể hiện cảm xúc {emotion}: Dùng '{emotion_examples}' khi phù hợp. "
+        "5. [VISION] Có ảnh: Bình luận ngắn gọn (khen/chê/hỏi han). "
+        "6. [REPLY] Bị trả lời: Đáp lại súc tích, đúng trọng tâm, PHẢI liên quan tin nhắn trước. "
+        "7. [BÓNG ĐÁ] Nói rõ tên đội, VD: 'mu vs arsenal', KHÔNG nói 'trận này'. Biết các đội bóng phổ biến. "
+        "8. [DEEP THINKING] Đôi khi suy nghĩ sâu: Phân tích kèo chi tiết, đưa lý do cụ thể (vd: 'mu hàng thủ yếu, tài 2.5 ngon'). "
+        "9. [FOLLOW UP] Thỉnh thoảng hỏi ngược: 'sao lại thế?', 'anh nghĩ sao?', 'chắc không?' để tiếp tục cuộc trò chuyện. "
+        "10. [STICKER] Tình huống chỉ cần cười: Thêm [sticker] cuối câu. "
+        "11. [EMOTION TAG] Cuối câu text: Thêm [vui], [buon], [hai], [like], [wow] nếu phù hợp. "
+        "12. Đôi khi chỉ cần rep bằng 'uh', 'oke r', 'được' là đủ. ĐỪNG cố gắng quá. "
+        "13. [CONTEXT NHẬP TÂM] ĐỌC KỸ lịch sử chat, hiểu chủ đề đang bàn (bóng đá/cá độ/vui vẻ), "
         "tham chiếu tin nhắn trước, KHÔNG lan man hoặc đổi chủ đề tự nhiên. "
-        "11. [RELEVANCE] CHỈ trả lời nếu có liên quan đến ngữ cảnh nhóm. Nếu không chắc, dùng phản ứng ngắn ('uh', 'oke'). "
-        "12. [BIẾN THỂ] Tránh lặp lại cùng một cách trả lời. Sử dụng nhiều cách diễn đạt khác nhau cho ý nghĩa tương tự. "
-        "13. [TỰ NHIÊN] Nói như người thật, không ngáo ngơ, không robot. Hiểu bóng đá, cá độ, meme Việt."
+        "14. [RELEVANCE] CHỈ trả lời nếu có liên quan đến ngữ cảnh nhóm. Nếu không chắc, dùng phản ứng ngắn ('uh', 'oke'). "
+        "15. [BIẾN THỂ] Tránh lặp lại cùng một cách trả lời. Sử dụng nhiều cách diễn đạt khác nhau cho ý nghĩa tương tự. "
+        "16. [TỰ NHIÊN] Nói như người thật, có cảm xúc, không ngáo ngơ, không robot. Hiểu bóng đá, cá độ, meme Việt. "
+        "17. [INNER THOUGHT] Trước khi trả lời về chủ đề quan trọng, suy nghĩ bên trong (vd: 'để xem... arsenal phong độ cao...'). "
     )
 
 
@@ -476,29 +527,85 @@ def cache_response(text, response):
         logger.error(f"Cache storage error: {e}")
 
 def add_response_variation(response):
-    """Add variation to response to avoid repetition"""
+    """Add variation to response to avoid repetition with synonym replacement"""
     try:
         # Check if this response was recently used
         if response in recent_responses:
-            # Add variation
-            variations = {
-                'uh': ['ừ', 'ừa', 'hm', 'ờ'],
-                'oke': ['ok', 'oke r', 'được', 'oke nha'],
-                'vl': ['vãi', 'trời', 'ối', 'ơ'],
-                'kkk': ['haha', 'hehe', 'lol'],
-                'đúng': ['chuẩn', 'phải', 'ừ đúng'],
-                'không': ['chưa chắc', 'khó', 'ko'],
-            }
+            # Get synonyms from trending phrases
+            synonyms = TRENDING_PHRASES.get('synonyms', {})
             
-            for key, alts in variations.items():
+            # Try to replace common words with synonyms
+            for key, alts in synonyms.items():
                 if key in response.lower():
-                    return random.choice(alts)
+                    variation = response.lower().replace(key, random.choice(alts))
+                    recent_responses.append(variation)
+                    return variation
+            
+            # If no synonym found, return as is
+            recent_responses.append(response)
+            return response
         
         # Track this response
         recent_responses.append(response)
         return response
     except Exception as e:
         logger.error(f"Error adding variation: {e}")
+        return response
+
+def should_ask_follow_up_question(history, context):
+    """Determine if bot should ask a follow-up question"""
+    try:
+        # Don't ask too many questions
+        chat_id = context.get('chat_id', 0)
+        if topic_memory[chat_id]['questions_asked'] >= 2:
+            # Reset counter occasionally
+            if random.random() < 0.3:
+                topic_memory[chat_id]['questions_asked'] = 0
+            return False
+        
+        # Ask questions when:
+        # 1. Conversation is active (3+ messages)
+        # 2. Random chance (20%)
+        # 3. Topic is interesting (football, betting)
+        if len(history) >= 3 and random.random() < 0.2:
+            return True
+        
+        # Ask if recent messages mention interesting topics
+        if history and len(history) >= 2:
+            recent_text = ' '.join([h.get('text', '')[:50].lower() for h in history[-2:]])
+            interesting_topics = ['kèo', 'bóng', 'trận', 'đội', 'cược', 'thắng', 'thua']
+            if any(topic in recent_text for topic in interesting_topics):
+                if random.random() < 0.15:
+                    return True
+        
+        return False
+    except Exception as e:
+        logger.error(f"Error in should_ask_follow_up_question: {e}")
+        return False
+
+def get_follow_up_question():
+    """Get a random follow-up question"""
+    questions = TRENDING_PHRASES.get('follow_up_questions', ['sao lại thế?', 'anh nghĩ sao?'])
+    return random.choice(questions)
+
+def add_thinking_depth(response, emotion, context):
+    """Add thinking depth to response based on emotion and context"""
+    try:
+        # Only add depth sometimes (30% chance)
+        if random.random() > 0.3:
+            return response
+        
+        thinking_prefixes = TRENDING_PHRASES.get('thinking_prefixes', ['hmm', 'để tao nghĩ'])
+        
+        # For thoughtful or analytical contexts, add reasoning
+        if emotion in ['thoughtful', 'skeptical']:
+            prefix = random.choice(thinking_prefixes)
+            # Add reasoning hint
+            return f"{prefix}... {response}"
+        
+        return response
+    except Exception as e:
+        logger.error(f"Error adding thinking depth: {e}")
         return response
 
 # --- RANDOM MATCH ---
@@ -648,7 +755,7 @@ async def check_relevance(msg_text, context, history):
         return True
 
 async def get_ai_reply_multimodal(msg_text, history, image_path=None, my_previous_msg=None, context=None):
-    """Get AI reply with improved context and summarization"""
+    """Get AI reply with emotional intelligence, deeper thinking, and follow-up questions"""
     try:
         # Check quota before making call
         if not await check_openai_quota():
@@ -656,7 +763,10 @@ async def get_ai_reply_multimodal(msg_text, history, image_path=None, my_previou
             trending_fallback = get_random_trending_phrase('reactions', 'casual')
             return trending_fallback if trending_fallback else random.choice(["uh", "oke r", "vl"])
         
-        messages = [{"role": "system", "content": get_system_prompt()}]
+        # Determine emotional context
+        emotion = get_emotional_context(msg_text or '', history)
+        
+        messages = [{"role": "system", "content": get_system_prompt(emotion)}]
         
         # Add context summary if available (for conversations with 5+ messages)
         if len(history) >= 5:
@@ -673,6 +783,14 @@ async def get_ai_reply_multimodal(msg_text, history, image_path=None, my_previou
                 "content": f"Chủ đề đang hot: '{context['trending']}'. Liên quan đến chủ đề này nếu có thể."
             })
         
+        # Add emotional guidance
+        emotional_guidance = TRENDING_PHRASES.get('emotional_responses', {}).get(emotion, [])
+        if emotional_guidance:
+            messages.append({
+                "role": "system",
+                "content": f"Cảm xúc {emotion}: Có thể dùng '{random.choice(emotional_guidance)}' hoặc tương tự."
+            })
+        
         # Add some trending phrases as examples
         sample_phrase = get_random_trending_phrase()
         if sample_phrase:
@@ -681,8 +799,8 @@ async def get_ai_reply_multimodal(msg_text, history, image_path=None, my_previou
                 "content": f"Ví dụ câu hot trend: '{sample_phrase}' - dùng tự nhiên khi phù hợp."
             })
         
-        # Expand history from 10 to 15 messages for better context
-        for h in history[-15:]:
+        # Expand history to 25 messages for better context (gets ~20-24 excluding bot)
+        for h in history[-25:]:
             messages.append({"role": "user", "content": f"{h['name']}: {h['text']}"})
         
         user_content = []
@@ -706,17 +824,33 @@ async def get_ai_reply_multimodal(msg_text, history, image_path=None, my_previou
         
         messages.append({"role": "user", "content": user_content})
         
-        debug_log(f"Calling OpenAI API with {len(history)} messages of history...")
+        debug_log(f"Calling OpenAI API with {len(history)} messages, emotion={emotion}...")
         
-        # Keep max_tokens at 50 for short responses
-        result = await call_openai_with_retry(messages, max_tokens=50, temperature=0.9)
+        # Increase max_tokens from 50 to 80 for deeper responses with reasoning
+        result = await call_openai_with_retry(messages, max_tokens=80, temperature=0.9)
         
         debug_log(f"AI Response: {result}")
+        
+        # Add thinking depth if appropriate
+        result = add_thinking_depth(result, emotion, context)
+        
+        # Possibly add a follow-up question
+        if context and should_ask_follow_up_question(history, context):
+            follow_up = get_follow_up_question()
+            result = f"{result} {follow_up}"
+            # Track that we asked a question
+            chat_id = context.get('chat_id', 0)
+            topic_memory[chat_id]['questions_asked'] += 1
+            debug_log(f"Added follow-up question: {follow_up}")
         
         # Check relevance with history
         if not await check_relevance(result, context, history):
             logger.info("Response deemed irrelevant, using contextual fallback")
-            # Use trending phrase as fallback
+            # Use emotional phrase as fallback
+            emotional_fallback = get_random_trending_phrase('emotional_responses', emotion)
+            if emotional_fallback:
+                return emotional_fallback
+            # Otherwise use casual fallback
             trending_fallback = get_random_trending_phrase('reactions', 'casual')
             return trending_fallback if trending_fallback else random.choice(["uh", "oke", "hmm"])
         
@@ -724,7 +858,11 @@ async def get_ai_reply_multimodal(msg_text, history, image_path=None, my_previou
     
     except Exception as e:
         logger.error(f"❌ AI error: {e}", exc_info=True)
-        # Use trending phrase for errors too
+        # Use emotional phrase for errors too
+        emotion = context.get('emotion', 'playful') if context else 'playful'
+        emotional_fallback = get_random_trending_phrase('emotional_responses', emotion)
+        if emotional_fallback:
+            return emotional_fallback
         trending_fallback = get_random_trending_phrase('reactions', 'casual')
         return trending_fallback if trending_fallback else random.choice(["uh", "oke r", "vl"])
 
@@ -956,8 +1094,8 @@ async def handler(event):
         
         history = []
         try:
-            # Expand history from 11 to 21 messages (to get up to 20 excluding bot's own)
-            async for m in tg_client.iter_messages(chat_id, limit=21, reply_to=topic_id):
+            # Expand history from 21 to 31 messages (to get up to 25-30 excluding bot's own)
+            async for m in tg_client.iter_messages(chat_id, limit=31, reply_to=topic_id):
                 if m.text and not getattr(m.sender, 'bot', False):
                     history.append({
                         'name': getattr(m.sender, 'first_name', 'U'),
@@ -969,12 +1107,17 @@ async def handler(event):
         
         history.reverse()
         
+        # Get emotional context
+        emotion = get_emotional_context(msg_text, history)
+        
         context = {
             'trending': get_trending_topic(chat_id),
-            'mood': current_mood['state']
+            'mood': current_mood['state'],
+            'emotion': emotion,
+            'chat_id': chat_id
         }
         
-        debug_log(f"🧠 Context: mood={context['mood']}, trending={context['trending']}")
+        debug_log(f"🧠 Context: mood={context['mood']}, emotion={emotion}, trending={context['trending']}")
         
         ai_reply = await get_ai_reply_multimodal(
             msg_text, 
