@@ -381,7 +381,7 @@ class TestEnhancedFunctions:
         result = await check_relevance(msg_text, context, history)
         assert isinstance(result, bool)
         # This should be relevant
-        assert result is True
+        assert result
     
     async def test_check_relevance_short_response(self):
         """Test relevance check for short responses"""
@@ -393,7 +393,7 @@ class TestEnhancedFunctions:
         history = []
         
         result = await check_relevance(msg_text, context, history)
-        assert result is True
+        assert result
     
     async def test_check_relevance_too_short(self):
         """Test relevance check for too short responses"""

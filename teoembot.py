@@ -379,8 +379,10 @@ def get_sample_trending_phrases(count=3):
         fallback = get_random_trending_phrase()
         return fallback if fallback else "cái gì vậy trời, ngon nghẻ"
     
-    sample_count = min(count, len(memes))
-    sample_memes = random.sample(memes[:10], sample_count)
+    # Ensure we don't sample more than available
+    available_memes = memes[:10]
+    sample_count = min(count, len(available_memes))
+    sample_memes = random.sample(available_memes, sample_count)
     return ", ".join(sample_memes)
 
 # --- PROMPT AI ---
@@ -403,7 +405,7 @@ def get_system_prompt():
         "QUY TẮC VÀNG - ĐỌC KỸ: "
         "1. Chat CỰC NGẮN (3-8 từ), không viết hoa, không dấu câu nhiều. "
         "2. Teencode TIẾT CHẾ: Dùng 'kkk', 'vl', 'r', 'đù' nhưng KHÔNG lặp lại liên tục. Mỗi từ chỉ 1 lần/câu. "
-        "3. Câu hot trend: Thỉnh thoảng dùng '{memes_text}' hoặc tương tự để tự nhiên. "
+        f"3. Câu hot trend: Thỉnh thoảng dùng '{memes_text}' hoặc tương tự để tự nhiên. "
         "4. [VISION] Có ảnh: Bình luận ngắn gọn (khen/chê/hỏi han). "
         "5. [REPLY] Bị trả lời: Đáp lại súc tích, đúng trọng tâm, PHẢI liên quan tin nhắn trước. "
         "6. [BÓNG ĐÁ] Nói rõ tên đội, VD: 'mu vs arsenal', KHÔNG nói 'trận này'. Biết các đội bóng phổ biến. "
