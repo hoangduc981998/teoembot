@@ -78,6 +78,9 @@ SLEEP_END_HOUR = 26
 # DEBUG MODE
 DEBUG = True  # Bật debug log
 
+# Response quality constants
+MIN_MEANINGFUL_LENGTH = 3  # Minimum character length for meaningful responses
+
 # Rate limiters
 telegram_limiter = AsyncLimiter(max_rate=20, time_period=60)  # 20 messages per minute
 openai_limiter = AsyncLimiter(max_rate=10, time_period=60)  # 10 API calls per minute
@@ -127,7 +130,10 @@ def get_random_trending_phrase(category=None, subcategory=None):
             if phrases:
                 return random.choice(phrases)
         # Return random meme as fallback
-        return random.choice(TRENDING_PHRASES.get('memes', ['oke']))
+        memes = TRENDING_PHRASES.get('memes', [])
+        if memes:
+            return random.choice(memes)
+        return 'oke'  # Final fallback
     except Exception as e:
         logger.error(f"Error getting trending phrase: {e}")
         return None
@@ -377,8 +383,9 @@ def get_system_prompt():
     }
     
     # Get some trending phrases to include in prompt
-    sample_memes = random.sample(TRENDING_PHRASES.get('memes', [])[:10], min(3, len(TRENDING_PHRASES.get('memes', []))))
-    memes_text = ", ".join(sample_memes) if sample_memes else "cái gì vậy trời, ngon nghẻ"
+    memes = TRENDING_PHRASES.get('memes', [])
+    sample_memes = random.sample(memes[:10], min(3, len(memes))) if memes else []
+    memes_text = ", ".join(sample_memes) if sample_memes else get_random_trending_phrase() or "cái gì vậy trời, ngon nghẻ"
     
     return (
         f"Bạn là Tèo, dân chơi cá độ bóng đá thật. Mood hiện tại: {mood} ({mood_traits[mood]}). "
@@ -591,7 +598,7 @@ async def summarize_context(history):
 async def check_relevance(msg_text, context, history):
     """Check if response would be relevant to current context with improved logic"""
     try:
-        if not msg_text or len(msg_text.strip()) < 3:
+        if not msg_text or len(msg_text.strip()) < MIN_MEANINGFUL_LENGTH:
             return False  # Too short to be meaningful
         
         # If message is very short (3-8 words), it's likely relevant
