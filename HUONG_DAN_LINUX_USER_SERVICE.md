@@ -169,12 +169,12 @@ sudo -u bot-nhiecvu /opt/bot-nhiecvu/venv/bin/pip install -r /opt/bot-nhiecvu/re
 > ⚠️ **Quan trọng:** Luôn xoá và tạo lại `venv` vì `venv` cũ hardcode đường dẫn `/root/...`
 > bên trong — copy sang `/opt/` sẽ bị lỗi path.
 
+```markdown
 ### Bước 4.7 — Kiểm tra bot chạy được không (test thủ công trước)
 ```bash
 # Chạy thử bằng đúng user mới — nếu không lỗi thì mới tạo service
 sudo -u bot-nhiecvu /opt/bot-nhiecvu/venv/bin/python /opt/bot-nhiecvu/bot.py
 # Ctrl+C để dừng sau khi thấy chạy được
-```
 
 ---
 
